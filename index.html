@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ROI Figure Studio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark"></span><strong>ROI Figure Studio</strong><span class="brand-cn">ROI 结果图排版器</span></div>
+      <div class="project-name"><span>项目：</span><input id="projectName" value="医学图像方法对比" /></div>
+      <div class="toolbar">
+        <button id="undoBtn" class="icon-btn" title="撤销">↶</button>
+        <button id="redoBtn" class="icon-btn" title="重做">↷</button>
+        <button id="fitBtn">适合画布</button>
+        <button id="previewBtn">预览</button>
+        <button id="exportBtn" class="primary">↓ 导出 PNG</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar left-panel">
+        <div class="panel-title">数据与结构</div>
+        <section>
+          <div class="section-head"><span>图像矩阵</span><span id="matrixCount" class="muted">0 / 20</span></div>
+          <div class="two-col">
+            <label>行数<input id="rowsInput" type="number" min="1" max="10" value="4" /></label>
+            <label>列数<input id="colsInput" type="number" min="1" max="10" value="5" /></label>
+          </div>
+          <button id="importBtn" class="wide add-btn">＋ 批量导入图片</button>
+          <input id="fileInput" type="file" accept="image/*" multiple hidden />
+          <p class="hint">按“从左到右、从上到下”的顺序导入。支持 PNG、JPG、WebP。</p>
+        </section>
+        <section class="volume-section">
+          <div class="section-head"><span>三维体数据</span><span class="volume-badge">TIFF</span></div>
+          <button id="volumeImportBtn" class="wide add-btn">＋ 追加 TIFF 体数据（可多选）</button>
+          <input id="volumeInput" type="file" accept=".tif,.tiff,image/tiff" multiple hidden />
+          <p class="hint">可一次多选，也可分多次追加。每个 TIFF 对应一个方法列，各列同步相同 Z 层。</p>
+          <label class="control-row volume-orientation"><span>方法作为行（切片作为列）</span><input id="methodsAsRows" type="checkbox" /></label>
+          <label class="slice-label">Z 轴层号（逗号分隔）
+            <div class="inline-action"><input id="sliceIndices" type="text" value="0, 10, 20, 31" /><button id="applySlices">应用</button></div>
+          </label>
+          <div class="two-col window-controls">
+            <label>显示范围下限<input id="windowMin" type="number" step="any" value="0" /></label>
+            <label>显示范围上限<input id="windowMax" type="number" step="any" value="0.05" /></label>
+          </div>
+          <div class="window-target">当前编辑：<strong id="windowTarget">切片 0</strong><span>（点击画布切换）</span></div>
+          <div class="two-button-row"><button id="autoWindow">自动当前范围</button><button id="autoAllWindows">自动全部范围</button></div>
+          <div id="volumeList" class="volume-list"><span class="muted">尚未导入体数据</span></div>
+          <button id="clearVolumes" class="wide danger-soft" hidden>清空全部体数据</button>
+        </section>
+        <section>
+          <div class="section-head"><span>行标签</span><button id="autoRows" class="text-btn">自动</button></div>
+          <textarea id="rowLabels" rows="5">切片1
+切片2
+切片3
+切片4</textarea>
+        </section>
+        <section>
+          <div class="section-head"><span>方法 / 列标题</span><button id="autoCols" class="text-btn">自动</button></div>
+          <textarea id="colLabels" rows="6">原图
+Neighbor2Neighbor
+Noise2Void
+Noise2Sim
+本方法</textarea>
+        </section>
+        <section class="selected-info">
+          <div class="section-head"><span>当前选择</span><span class="status-dot"></span></div>
+          <div id="selectionText">第 1 行 · 第 1 列</div>
+          <button id="replaceBtn" class="wide">替换当前图片</button>
+          <input id="replaceInput" type="file" accept="image/*" hidden />
+        </section>
+      </aside>
+
+      <section class="stage-area">
+        <div class="stage-tools">
+          <div class="tool-group">
+            <button class="tool active" data-tool="select">↖ 选择</button>
+            <button class="tool" data-tool="roi">□ 框选 ROI</button>
+            <button class="tool" data-tool="arrow">↗ 设置箭头</button>
+          </div>
+          <div class="tool-tip" id="toolTip">点击单元格以选择；拖拽黄色 ROI 框可移动</div>
+        </div>
+        <div class="canvas-wrap" id="canvasWrap">
+          <canvas id="figureCanvas" width="1600" height="1200"></canvas>
+          <div id="emptyState" class="empty-state">
+            <div class="empty-icon">□</div>
+            <strong>导入图片开始制作</strong>
+            <span>也可以先框选 ROI，导入后会自动应用到同一行</span>
+            <button id="emptyImport" class="primary">导入图片</button>
+          </div>
+        </div>
+        <div class="statusbar">
+          <span id="sizeStatus">1600 × 1200 px</span><span>300 dpi</span><span id="zoomStatus">缩放 100%</span><span class="save-status">● 图像仅在本机处理</span>
+        </div>
+      </section>
+
+      <aside class="sidebar right-panel">
+        <div class="panel-title">属性</div>
+        <section>
+          <div class="section-head"><span>画布</span></div>
+          <div class="two-col">
+            <label>宽度<input id="canvasWidth" type="number" min="800" max="6000" value="1600" /></label>
+            <label>高度<input id="canvasHeight" type="number" min="600" max="6000" value="1200" /></label>
+          </div>
+          <label class="control-row">背景色<input id="bgColor" type="color" value="#000000" /></label>
+          <label class="control-row"><span>显示编号</span><input id="showNumbers" type="checkbox" checked /></label>
+        </section>
+        <section>
+          <div class="section-head"><span>ROI 与放大框</span></div>
+          <label class="control-row">边框颜色<input id="roiColor" type="color" value="#d7dc35" /></label>
+          <label>边框宽度 <output id="roiStrokeValue">2 px</output><input id="roiStroke" type="range" min="1" max="8" value="2" /></label>
+          <label>放大框比例 <output id="insetScaleValue">30%</output><input id="insetScale" type="range" min="18" max="48" value="30" /></label>
+          <label class="control-row"><span>显示连接线</span><input id="showConnectors" type="checkbox" checked /></label>
+          <label class="control-row"><span>同行同步 ROI</span><input id="syncRow" type="checkbox" checked /></label>
+          <label class="control-row"><span>同列同步 ROI</span><input id="syncCol" type="checkbox" /></label>
+          <p class="hint">两项都开启时，整个矩阵共享同一个 ROI。</p>
+        </section>
+        <section>
+          <div class="section-head"><span>箭头</span></div>
+          <label class="control-row">颜色<input id="arrowColor" type="color" value="#ff2d25" /></label>
+          <label>箭头大小 <output id="arrowSizeValue">18 px</output><input id="arrowSize" type="range" min="8" max="40" value="18" /></label>
+          <label class="control-row"><span>显示箭头</span><input id="showArrow" type="checkbox" checked /></label>
+        </section>
+        <section>
+          <div class="section-head"><span>文字</span></div>
+          <label>字号 <output id="fontSizeValue">24 px</output><input id="fontSize" type="range" min="14" max="42" value="24" /></label>
+          <label class="control-row">文字颜色<input id="textColor" type="color" value="#f4f5f7" /></label>
+          <label class="control-row"><span>行标签竖排</span><input id="verticalRows" type="checkbox" checked /></label>
+        </section>
+        <section>
+          <div class="section-head"><span>布局</span></div>
+          <label>单元格间距 <output id="gapValue">16 px</output><input id="gap" type="range" min="0" max="50" value="16" /></label>
+          <button id="resetLayout" class="wide danger-soft">恢复默认布局</button>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Generated distribution archives
+*.zip
+
+# Local data and exports
+*.tif
+*.tiff
+*.dcm
+*.nii
+*.nii.gz
+exports/
+data/
+
+# Local tooling
+node_modules/
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
