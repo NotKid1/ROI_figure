@@ -5,7 +5,7 @@
   const ctx = canvas.getContext('2d');
   const state = {
     rows: 4, cols: 5, width: 1600, height: 1200,
-    images: [], volumes: [], sliceWindows: {}, selected: 0, tool: 'select', dragging: null,
+    images: [], volumes: [], activeSlices: [], sliceWindows: {}, selected: 0, tool: 'select', dragging: null,
     rowLabels: ['切片1','切片2','切片3','切片4'],
     colLabels: ['原图','Neighbor2Neighbor','Noise2Void','Noise2Sim','本方法'],
     rois: [], colRois: [], cellRois: [], globalRoi: {x:.14,y:.26,w:.18,h:.18}, arrows: [],
@@ -56,10 +56,37 @@
   }
   function mainRect(index){ const cr=cellRect(index); const img=state.images[index]; return img ? fitImageRect(img,cr.image) : cr.image; }
   function insetRect(cr,mr) {
-    if(cr.outer.w<=cr.outer.h*2)return cr.inset;
-    return {...cr.inset,x:Math.min(cr.inset.x,mr.x+mr.w+Math.max(18,state.gap)),y:mr.y+mr.h-cr.inset.h};
+    const roi=getRoi(cr.r*state.cols+cr.c), aspect=(roi.w*mr.w)/(roi.h*mr.h);
+    const box=cr.inset, w=aspect>=1?box.w:box.h*aspect, h=aspect>=1?box.w/aspect:box.h;
+    const inset={x:box.x+box.w-w,y:box.y+box.h-h,w,h};
+    if(cr.outer.w<=cr.outer.h*2)return inset;
+    return {...inset,x:Math.min(inset.x,mr.x+mr.w+Math.max(18,state.gap)),y:mr.y+mr.h-inset.h};
   }
-  function getRoi(index) { const row=Math.floor(index/state.cols),col=index%state.cols;if(state.syncRow&&state.syncCol)return state.globalRoi;if(state.syncRow)return state.rois[row];if(state.syncCol)return state.colRois[col];return state.cellRois[index] || state.rois[row]; }
+  function getRoi(index) {
+    const row=Math.floor(index/state.cols),col=index%state.cols;
+    const raw=state.syncRow&&state.syncCol?state.globalRoi:state.syncRow?state.rois[row]:state.syncCol?state.colRois[col]:state.cellRois[index]||state.rois[row];
+    const img=state.images[index];if(!img)return raw;
+    const iw=imageWidth(img),ih=imageHeight(img),w=clamp(Math.round(raw.w*iw),1,iw),h=clamp(Math.round(raw.h*ih),1,ih);
+    const x=clamp(Math.round(raw.x*iw),0,iw-w),y=clamp(Math.round(raw.y*ih),0,ih-h);
+    return {x:x/iw,y:y/ih,w:w/iw,h:h/ih};
+  }
+  function syncRoiPixels(){
+    const img=state.images[state.selected],ids=['roiX','roiY','roiWidth','roiHeight'];
+    ids.forEach(id=>$(id).disabled=!img);$('applyRoiPixels').disabled=!img;
+    if(!img){$('roiPixelInfo').textContent='导入图片后可精确调整 ROI';return;}
+    const iw=imageWidth(img),ih=imageHeight(img),roi=getRoi(state.selected);
+    const vals=[Math.round(roi.x*iw),Math.round(roi.y*ih),Math.round(roi.w*iw),Math.round(roi.h*ih)];
+    ids.forEach((id,i)=>{$(id).value=vals[i];$(id).max=i%2===0?iw:ih;});
+    $('roiPixelInfo').textContent=`原图 ${iw} × ${ih} px · ROI ${vals[2]} × ${vals[3]} px`;
+  }
+  $('applyRoiPixels').onclick=()=>{
+    const img=state.images[state.selected];if(!img)return;
+    const vals=['roiX','roiY','roiWidth','roiHeight'].map(id=>$(id).value.trim());
+    if(vals.some(v=>v===''||!Number.isInteger(Number(v))))return toast('ROI 位置和尺寸必须是整数像素');
+    const [x,y,w,h]=vals.map(Number),iw=imageWidth(img),ih=imageHeight(img);
+    if(x<0||y<0||w<1||h<1||x+w>iw||y+h>ih)return toast(`ROI 必须位于 ${iw} × ${ih} 像素图像内`);
+    pushHistory();setRoi(state.selected,{x:x/iw,y:y/ih,w:w/iw,h:h/ih});render();
+  };
   function setRoi(index, roi) { const row=Math.floor(index/state.cols),col=index%state.cols;if(state.syncRow&&state.syncCol)state.globalRoi=roi;else if(state.syncRow)state.rois[row]=roi;else if(state.syncCol)state.colRois[col]=roi;else state.cellRois[index]=roi; }
 
   function drawPlaceholder(rect, index) {
@@ -104,7 +131,7 @@
     }
     ctx.restore();
   }
-  function render(){ canvas.width=state.width;canvas.height=state.height;drawFigure();$('sizeStatus').textContent=`${state.width} × ${state.height} px`;$('matrixCount').textContent=`${state.images.filter(Boolean).length} / ${state.rows*state.cols}`;$('emptyState').classList.toggle('hidden',state.images.filter(Boolean).length>0); const r=Math.floor(state.selected/state.cols)+1,c=state.selected%state.cols+1;$('selectionText').textContent=`第 ${r} 行 · 第 ${c} 列`;syncWindowControls(); }
+  function render(){ canvas.width=state.width;canvas.height=state.height;drawFigure();$('sizeStatus').textContent=`${state.width} × ${state.height} px`;$('matrixCount').textContent=`${state.images.filter(Boolean).length} / ${state.rows*state.cols}`;$('emptyState').classList.toggle('hidden',state.images.filter(Boolean).length>0); const r=Math.floor(state.selected/state.cols)+1,c=state.selected%state.cols+1;$('selectionText').textContent=`第 ${r} 行 · 第 ${c} 列`;syncWindowControls();syncRoiPixels(); }
 
   function point(ev){ const b=canvas.getBoundingClientRect();return{x:(ev.clientX-b.left)*canvas.width/b.width,y:(ev.clientY-b.top)*canvas.height/b.height}; }
   function hitCell(p){ const l=layout(); if(p.x<l.left||p.y<l.top)return -1;const c=Math.floor((p.x-l.left)/l.cw),r=Math.floor((p.y-l.top)/l.ch);return r>=0&&r<state.rows&&c>=0&&c<state.cols?r*state.cols+c:-1; }
@@ -117,7 +144,7 @@
     render();
   });
   canvas.addEventListener('pointermove',ev=>{ if(!state.dragging)return;const p=point(ev),d=state.dragging,idx=d.index,mr=mainRect(idx),x=clamp((p.x-mr.x)/mr.w,0,1),y=clamp((p.y-mr.y)/mr.h,0,1);
-    if(d.type==='draw-roi'){setRoi(idx,{x:Math.min(d.start.x,x),y:Math.min(d.start.y,y),w:Math.max(.02,Math.abs(x-d.start.x)),h:Math.max(.02,Math.abs(y-d.start.y))});}
+    if(d.type==='draw-roi'){const img=state.images[idx],minW=img?1/imageWidth(img):.001,minH=img?1/imageHeight(img):.001;const w=Math.max(minW,Math.abs(x-d.start.x)),h=Math.max(minH,Math.abs(y-d.start.y));setRoi(idx,{x:Math.min(1-w,d.start.x,x),y:Math.min(1-h,d.start.y,y),w,h});}
     else {const current=getRoi(idx),roi={...current};roi.x=clamp(x-d.dx,0,1-roi.w);roi.y=clamp(y-d.dy,0,1-roi.h);setRoi(idx,roi);}render(); });
   canvas.addEventListener('pointerup',()=>state.dragging=null);
 
@@ -164,9 +191,14 @@
     const low=center-width/2,high=center+width/2,scale=255/width,invert=volume.photo===0;
     for(let i=0,j=0;i<frame.length;i++,j+=4){let g=clamp(Math.round((frame[i]-low)*scale),0,255);if(invert)g=255-g;im.data[j]=im.data[j+1]=im.data[j+2]=g;im.data[j+3]=255;}oc.putImageData(im,0,0);return out;
   }
-  function parsedSlices(){return $('sliceIndices').value.split(/[，,;；\s]+/).map(Number).filter(Number.isFinite).map(Math.round);}
+  function parsedSlices(){
+    const tokens=$('sliceIndices').value.trim().split(/[，,;；\s]+/).filter(Boolean),depth=state.volumes.length?Math.min(...state.volumes.map(v=>v.frames.length)):Infinity;
+    const numbers=tokens.map(Number);
+    if(!numbers.length||numbers.some(z=>!Number.isInteger(z)||z<1||z>depth))return [];
+    return numbers.map(z=>z-1);
+  }
   function currentSliceOrdinal(){if(!state.volumes.length)return 0;const selected=clamp(state.selected,0,Math.max(0,state.rows*state.cols-1));return state.methodsAsRows?selected%state.cols:Math.floor(selected/state.cols);}
-  function currentSlice(){if(!state.volumes.length)return null;const zs=parsedSlices();if(!zs.length)return null;const selected=clamp(state.selected,0,Math.max(0,state.rows*state.cols-1));return state.methodsAsRows?zs[selected%state.cols]:zs[Math.floor(selected/state.cols)];}
+  function currentSlice(){if(!state.volumes.length)return null;const zs=state.activeSlices;if(!zs.length)return null;const selected=clamp(state.selected,0,Math.max(0,state.rows*state.cols-1));return (state.methodsAsRows?zs[selected%state.cols]:zs[Math.floor(selected/state.cols)])??null;}
   function autoSliceWindow(z){
     const sample=[];for(const v of state.volumes){const frame=v.frames[clamp(z,0,v.frames.length-1)],step=Math.max(1,Math.floor(frame.length/70000));for(let i=0;i<frame.length;i+=step){const x=frame[i];if(Number.isFinite(x))sample.push(x);}}
     sample.sort((a,b)=>a-b);const low=percentile(sample,1),high=percentile(sample,99);return {center:(low+high)/2,width:Math.max(Number.EPSILON,high-low)};
@@ -182,8 +214,8 @@
   }
   function formatWindow(v){return Number(v.toPrecision(7)).toString();}
   function applyVolumes(){
-    if(!state.volumes.length)return toast('请先导入 TIFF 体数据');const zs=parsedSlices();if(!zs.length)return toast('请输入至少一个有效层号');
-    ensureSliceWindows(zs);pushHistory();const previousSelected=state.selected;
+    if(!state.volumes.length)return toast('请先导入 TIFF 体数据');const zs=parsedSlices();if(!zs.length)return toast(`请输入 1～${Math.min(...state.volumes.map(v=>v.frames.length))} 之间的整数层号`);
+    ensureSliceWindows(zs);pushHistory();state.activeSlices=zs;const previousSelected=state.selected;
     state.methodsAsRows=$('methodsAsRows').checked;
     if(state.methodsAsRows){
       state.rows=state.volumes.length;state.cols=zs.length;state.images=Array(state.rows*state.cols);
@@ -200,7 +232,7 @@
   $('volumeImportBtn').onclick=()=>$('volumeInput').click();
   $('volumeInput').onchange=async e=>{
     const files=[...e.target.files];if(!files.length)return;const btn=$('volumeImportBtn');btn.disabled=true;btn.textContent='正在解析体数据…';
-    try{const wasEmpty=!state.volumes.length;for(const file of files){btn.textContent=`正在解析 ${file.name}`;const v=parseTiff(await file.arrayBuffer(),file.name);v.label=v.name;state.volumes.push(v);}showVolumes();if(wasEmpty){const minDepth=Math.min(...state.volumes.map(v=>v.frames.length));const count=Math.min(4,minDepth),auto=Array.from({length:count},(_,i)=>Math.round(i*(minDepth-1)/Math.max(1,count-1)));$('sliceIndices').value=auto.join(', ');}ensureSliceWindows(parsedSlices(),true);applyVolumes();}
+    try{const wasEmpty=!state.volumes.length;for(const file of files){btn.textContent=`正在解析 ${file.name}`;const v=parseTiff(await file.arrayBuffer(),file.name);v.label=v.name;state.volumes.push(v);}showVolumes();if(wasEmpty){const minDepth=Math.min(...state.volumes.map(v=>v.frames.length));const count=Math.min(4,minDepth),auto=Array.from({length:count},(_,i)=>1+Math.round(i*(minDepth-1)/Math.max(1,count-1)));$('sliceIndices').value=auto.join(', ');}ensureSliceWindows(parsedSlices(),true);applyVolumes();}
     catch(err){console.error(err);toast(`TIFF 读取失败：${err.message}`);}finally{btn.disabled=false;btn.textContent='＋ 追加 TIFF 体数据（可多选）';e.target.value='';}
   };
   function commitCurrentWindow(){const z=currentSlice(),min=Number($('windowMin').value),max=Number($('windowMax').value);if(z===null)return;if(!Number.isFinite(min)||!Number.isFinite(max)||max<=min)return toast('范围上下限必须是数值，且上限要大于下限');state.sliceWindows[z]={center:(min+max)/2,width:max-min};applyVolumes();}

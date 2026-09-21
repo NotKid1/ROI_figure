@@ -39,8 +39,8 @@
           <input id="volumeInput" type="file" accept=".tif,.tiff,image/tiff" multiple hidden />
           <p class="hint">可一次多选，也可分多次追加。每个 TIFF 对应一个方法列，各列同步相同 Z 层。</p>
           <label class="control-row volume-orientation"><span>方法作为行（切片作为列）</span><input id="methodsAsRows" type="checkbox" /></label>
-          <label class="slice-label">Z 轴层号（逗号分隔）
-            <div class="inline-action"><input id="sliceIndices" type="text" value="0, 10, 20, 31" /><button id="applySlices">应用</button></div>
+          <label class="slice-label">Z 轴层号（从 1 开始，逗号分隔）
+            <div class="inline-action"><input id="sliceIndices" type="text" value="1, 11, 21, 32" /><button id="applySlices">应用</button></div>
           </label>
           <div class="two-col window-controls">
             <label>显示范围下限<input id="windowMin" type="number" step="any" value="0" /></label>
@@ -110,6 +110,15 @@ Noise2Sim
         </section>
         <section>
           <div class="section-head"><span>ROI 与放大框</span></div>
+          <p id="roiPixelInfo" class="hint">导入图片后可精确调整 ROI</p>
+          <div class="two-col">
+            <label>X（从 0 开始）<input id="roiX" type="number" min="0" step="1" disabled /></label>
+            <label>Y（从 0 开始）<input id="roiY" type="number" min="0" step="1" disabled /></label>
+            <label>宽度（原图 px）<input id="roiWidth" type="number" min="1" step="1" disabled /></label>
+            <label>高度（原图 px）<input id="roiHeight" type="number" min="1" step="1" disabled /></label>
+          </div>
+          <button id="applyRoiPixels" class="wide" disabled>应用 ROI 像素尺寸</button>
+          <p class="hint">拖拽后实时显示尺寸；放大框保持 ROI 长宽比。同步按相对位置与大小应用。</p>
           <label class="control-row">边框颜色<input id="roiColor" type="color" value="#d7dc35" /></label>
           <label>边框宽度 <output id="roiStrokeValue">2 px</output><input id="roiStroke" type="range" min="1" max="8" value="2" /></label>
           <label>放大框比例 <output id="insetScaleValue">30%</output><input id="insetScale" type="range" min="18" max="48" value="30" /></label>
